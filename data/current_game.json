@@ -1,0 +1,18 @@
+{
+  "name": "blind",
+  "rounds": [
+    {
+      "artist": "iam",
+      "title": "petit frere"
+    },
+    {
+      "artist": "micheal jackson",
+      "title": "beat it"
+    },
+    {
+      "artist": "eminem",
+      "title": "venom"
+    }
+  ],
+  "current_round_index": 3
+}
