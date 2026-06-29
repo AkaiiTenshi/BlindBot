@@ -22,43 +22,28 @@ class AdminCog(commands.Cog):
     """Cog for admin-only commands."""
 
     def __init__(self, bot):
-        """
-        Initialize the admin cog.
-
-        Args:
-            bot: Discord bot instance
-        """
         self.bot = bot
         self.data_manager = DataManager()
 
-    @app_commands.command(
-        name="set_channel", description="Set current channel as game channel"
-    )
+    @app_commands.command(name="set_channel", description="Set current channel as game channel")
     @app_commands.check(has_manage_channels)
     async def set_channel(self, interaction: Interaction):
         """Configure which channel to use for the game."""
-
-        # Get current channel ID
         channel_id = interaction.channel.id
 
-        # Save to config
         config = self.data_manager.load_config()
         config["game_channel_id"] = channel_id
         self.data_manager.save_config(config)
 
-        # Update the game cog's channel ID
         game_cog = self.bot.get_cog("GameCog")
         if game_cog:
             game_cog.set_game_channel(channel_id)
 
-        # Confirm (ephemeral = only command user sees this)
         await interaction.response.send_message(
             f"✅ Game channel set to {interaction.channel.mention}", ephemeral=True
         )
 
-    @app_commands.command(
-        name="start_round", description="Start a new blind test round"
-    )
+    @app_commands.command(name="start_round", description="Start a new blind test round")
     @app_commands.describe(
         artist="Artist name (lowercase recommended)",
         title="Song title (lowercase recommended)",
@@ -66,34 +51,27 @@ class AdminCog(commands.Cog):
     @app_commands.check(has_manage_channels)
     async def start_round(self, interaction: Interaction, artist: str, title: str):
         """Start a new round with the given answer."""
-
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
-            await interaction.response.send_message(
-                "❌ Game system not loaded!", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Game system not loaded!", ephemeral=True)
             return
 
-        # Validation: Check if game channel is set
         if game_cog.game_channel_id is None:
             await interaction.response.send_message(
                 "❌ Game channel not set! Use `/set_channel` first.", ephemeral=True
             )
             return
 
-        # Validation: Check if round already active
         if game_cog.active:
             await interaction.response.send_message(
                 "❌ Round already active! Use `/end_round` first.", ephemeral=True
             )
             return
 
-        # Normalize inputs (remove extra whitespace, convert to lowercase)
         artist = " ".join(artist.strip().split()).lower()
         title = " ".join(title.strip().split()).lower()
 
-        # Validation: Check for empty strings
         if not artist or not title:
             await interaction.response.send_message(
                 "❌ Artist and title cannot be empty.", ephemeral=True
@@ -102,38 +80,28 @@ class AdminCog(commands.Cog):
 
         round_num = game_cog.begin_round(artist, title)
 
-        # Announce in game channel
         game_channel = self.bot.get_channel(game_cog.game_channel_id)
         await game_channel.send(f"🎵 **Round {round_num} started!** Start guessing!")
 
-        # Confirm to admin (only admin sees this)
         await interaction.response.send_message(
-            f"✅ Round {round_num} started!\nAnswer: {artist} - {title}",
-            ephemeral=True,
+            f"✅ Round {round_num} started!\nAnswer: {artist} - {title}", ephemeral=True
         )
 
     @app_commands.command(name="end_round", description="End the current round")
     @app_commands.check(has_manage_channels)
     async def end_round(self, interaction: Interaction):
         """End the active round and show results."""
-
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
-            await interaction.response.send_message(
-                "❌ Game system not loaded!", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Game system not loaded!", ephemeral=True)
             return
 
-        # Validation: Check if round is active
         if not game_cog.active:
-            await interaction.response.send_message(
-                "❌ No active round.", ephemeral=True
-            )
+            await interaction.response.send_message("❌ No active round.", ephemeral=True)
             return
 
         info = game_cog.finish_round()
-
         game_channel = self.bot.get_channel(game_cog.game_channel_id)
 
         if info["locked"]:
@@ -149,32 +117,26 @@ class AdminCog(commands.Cog):
                 f"No one guessed correctly."
             )
 
-        # Confirm to admin
+        if game_cog.is_game_complete():
+            await game_channel.send(embed=game_cog.build_game_leaderboard_embed())
+
         await interaction.response.send_message("✅ Round ended.", ephemeral=True)
 
-    @app_commands.command(
-        name="set_answer", description="Correct the answer if you made a typo"
-    )
+    @app_commands.command(name="set_answer", description="Correct the answer if you made a typo")
     @app_commands.describe(artist="Correct artist name", title="Correct song title")
     @app_commands.check(has_manage_channels)
     async def set_answer(self, interaction: Interaction, artist: str, title: str):
         """Update the answer mid-round."""
-
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
-            await interaction.response.send_message(
-                "❌ Game system not loaded!", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Game system not loaded!", ephemeral=True)
             return
 
         if not game_cog.active:
-            await interaction.response.send_message(
-                "❌ No active round.", ephemeral=True
-            )
+            await interaction.response.send_message("❌ No active round.", ephemeral=True)
             return
 
-        # Normalize
         artist = " ".join(artist.strip().split()).lower()
         title = " ".join(title.strip().split()).lower()
 
@@ -184,44 +146,31 @@ class AdminCog(commands.Cog):
             f"✅ Answer updated to: {artist} - {title}", ephemeral=True
         )
 
-    @app_commands.command(
-        name="show_answer", description="Reveal the answer without ending"
-    )
+    @app_commands.command(name="show_answer", description="Reveal the answer without ending")
     @app_commands.check(has_manage_channels)
     async def show_answer(self, interaction: Interaction):
         """Show the answer in the game channel (for skipping)."""
-
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
-            await interaction.response.send_message(
-                "❌ Game system not loaded!", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Game system not loaded!", ephemeral=True)
             return
 
         if not game_cog.active:
-            await interaction.response.send_message(
-                "❌ No active round.", ephemeral=True
-            )
+            await interaction.response.send_message("❌ No active round.", ephemeral=True)
             return
 
-        answer = f"{game_cog.artist} - {game_cog.title}"
-
         game_channel = self.bot.get_channel(game_cog.game_channel_id)
-        await game_channel.send(f"💡 Answer: {answer}")
+        await game_channel.send(f"💡 Answer: {game_cog.artist} - {game_cog.title}")
 
         await interaction.response.send_message("✅ Answer revealed.", ephemeral=True)
 
     @app_commands.command(name="reset_scores", description="Reset scores")
     @app_commands.describe(user="User to reset (leave empty for all)")
     @app_commands.check(has_manage_channels)
-    async def reset_scores(
-        self, interaction: Interaction, user: Optional[discord.User] = None
-    ):
+    async def reset_scores(self, interaction: Interaction, user: Optional[discord.User] = None):
         """Reset all scores or a specific user's score."""
-
         if user:
-            # Reset specific user
             scores = self.data_manager.load_scores()
             user_id = str(user.id)
 
@@ -236,15 +185,10 @@ class AdminCog(commands.Cog):
                     f"❌ No scores found for {user.display_name}", ephemeral=True
                 )
         else:
-            # Reset all scores
             self.data_manager.save_scores({})
-            await interaction.response.send_message(
-                "✅ All scores reset!", ephemeral=True
-            )
+            await interaction.response.send_message("✅ All scores reset!", ephemeral=True)
 
-    @app_commands.command(
-        name="create_game", description="Create a new multi-round game"
-    )
+    @app_commands.command(name="create_game", description="Create a new multi-round game")
     @app_commands.describe(
         name="Name of the game (e.g., '80s Classics')",
         rounds="Number of rounds to add (optional - for batch input)",
@@ -252,32 +196,24 @@ class AdminCog(commands.Cog):
     @app_commands.check(has_manage_channels)
     async def create_game(self, interaction: Interaction, name: str, rounds: int = 0):
         """Create a new game with multiple rounds."""
-
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
-            await interaction.response.send_message(
-                "❌ Game system not loaded!", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Game system not loaded!", ephemeral=True)
             return
 
-        # Check if a round is active
         if game_cog.active:
             await interaction.response.send_message(
-                "❌ Please end the current round first with `/end_round`.",
-                ephemeral=True,
+                "❌ Please end the current round first with `/end_round`.", ephemeral=True
             )
             return
 
-        # Create new game
         game_cog.game_data = {"name": name, "rounds": [], "current_round_index": 0}
-
-        # Save to file
+        game_cog.reset_game_scores()
         self.data_manager.save_game(game_cog.game_data)
 
         if rounds > 0:
             game_cog.start_batch_input(interaction.user.id, interaction.channel.id, rounds)
-
             await interaction.response.send_message(
                 f"✅ Created game: **{name}**\n"
                 f"📝 Batch input mode active! Send {rounds} messages in the format:\n"
@@ -292,45 +228,33 @@ class AdminCog(commands.Cog):
                 ephemeral=True,
             )
 
-    @app_commands.command(
-        name="add_round", description="Add a round to the current game"
-    )
+    @app_commands.command(name="add_round", description="Add a round to the current game")
     @app_commands.describe(artist="Artist name", title="Song title")
     @app_commands.check(has_manage_channels)
     async def add_round(self, interaction: Interaction, artist: str, title: str):
         """Add a round to the current game."""
-
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
-            await interaction.response.send_message(
-                "❌ Game system not loaded!", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Game system not loaded!", ephemeral=True)
             return
 
-        # Check if game exists
         if not game_cog.game_data:
             await interaction.response.send_message(
-                "❌ No game exists! Create one first with `/create_game`.",
-                ephemeral=True,
+                "❌ No game exists! Create one first with `/create_game`.", ephemeral=True
             )
             return
 
-        # Normalize inputs
         artist = " ".join(artist.strip().split()).lower()
         title = " ".join(title.strip().split()).lower()
 
-        # Validation
         if not artist or not title:
             await interaction.response.send_message(
                 "❌ Artist and title cannot be empty.", ephemeral=True
             )
             return
 
-        # Add round to game
         game_cog.game_data["rounds"].append({"artist": artist, "title": title})
-
-        # Save to file
         self.data_manager.save_game(game_cog.game_data)
 
         round_count = len(game_cog.game_data["rounds"])
@@ -340,22 +264,16 @@ class AdminCog(commands.Cog):
             ephemeral=True,
         )
 
-    @app_commands.command(
-        name="next_round", description="Start the next round from the current game"
-    )
+    @app_commands.command(name="next_round", description="Start the next round from the current game")
     @app_commands.check(has_manage_channels)
     async def next_round(self, interaction: Interaction):
         """Start the next round from the current game."""
-
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
-            await interaction.response.send_message(
-                "❌ Game system not loaded!", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Game system not loaded!", ephemeral=True)
             return
 
-        # Check if game exists
         if not game_cog.game_data:
             await interaction.response.send_message(
                 "❌ No game exists! Create one first with `/create_game` and add rounds.",
@@ -363,24 +281,20 @@ class AdminCog(commands.Cog):
             )
             return
 
-        # Check if rounds exist
         if not game_cog.game_data["rounds"]:
             await interaction.response.send_message(
                 "❌ No rounds in game! Add rounds with `/add_round`.", ephemeral=True
             )
             return
 
-        # Check if round already active
         if game_cog.active:
             await interaction.response.send_message(
                 "❌ Round already active! Use `/end_round` first.", ephemeral=True
             )
             return
 
-        # Get current round index
         current_index = game_cog.game_data["current_round_index"]
 
-        # Check if we've finished all rounds
         if current_index >= len(game_cog.game_data["rounds"]):
             await interaction.response.send_message(
                 f"✅ Game **{game_cog.game_data['name']}** complete!\n"
@@ -390,25 +304,21 @@ class AdminCog(commands.Cog):
             )
             return
 
-        # Get the current round
-        current_round = game_cog.game_data["rounds"][current_index]
-        artist = current_round["artist"]
-        title = current_round["title"]
-
-        # Check if game channel is set
         if game_cog.game_channel_id is None:
             await interaction.response.send_message(
                 "❌ Game channel not set! Use `/set_channel` first.", ephemeral=True
             )
             return
 
+        current_round = game_cog.game_data["rounds"][current_index]
+        artist = current_round["artist"]
+        title = current_round["title"]
+
         game_cog.begin_round(artist, title)
 
-        # Increment for next time
         game_cog.game_data["current_round_index"] = current_index + 1
         self.data_manager.save_game(game_cog.game_data)
 
-        # Announce in game channel
         game_channel = self.bot.get_channel(game_cog.game_channel_id)
         rounds_total = len(game_cog.game_data["rounds"])
         await game_channel.send(
@@ -416,7 +326,6 @@ class AdminCog(commands.Cog):
             f"(Game: {game_cog.game_data['name']}) - Start guessing!"
         )
 
-        # Confirm to admin
         await interaction.response.send_message(
             f"✅ Started round {current_index + 1}/{rounds_total}\n"
             f"Answer: {artist} - {title}",
@@ -427,13 +336,10 @@ class AdminCog(commands.Cog):
     @app_commands.check(has_manage_channels)
     async def show_game(self, interaction: Interaction):
         """Show information about the current game."""
-
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
-            await interaction.response.send_message(
-                "❌ Game system not loaded!", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Game system not loaded!", ephemeral=True)
             return
 
         if not game_cog.game_data:
@@ -446,12 +352,11 @@ class AdminCog(commands.Cog):
         current_idx = game["current_round_index"]
         total_rounds = len(game["rounds"])
 
-        # Build rounds list
         rounds_list = []
         for i, round_data in enumerate(game["rounds"], start=1):
             status = "✅" if i <= current_idx else "⏳"
             if i == current_idx + 1 and game_cog.active:
-                status = "🎵"  # Currently playing
+                status = "🎵"
             rounds_list.append(
                 f"{status} Round {i}: {round_data['artist']} - {round_data['title']}"
             )
@@ -469,25 +374,19 @@ class AdminCog(commands.Cog):
     @app_commands.check(has_manage_channels)
     async def delete_game(self, interaction: Interaction):
         """Delete the current game."""
-
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
-            await interaction.response.send_message(
-                "❌ Game system not loaded!", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Game system not loaded!", ephemeral=True)
             return
 
         if not game_cog.game_data:
-            await interaction.response.send_message(
-                "❌ No game exists!", ephemeral=True
-            )
+            await interaction.response.send_message("❌ No game exists!", ephemeral=True)
             return
 
         if game_cog.active:
             await interaction.response.send_message(
-                "❌ Please end the current round first with `/end_round`.",
-                ephemeral=True,
+                "❌ Please end the current round first with `/end_round`.", ephemeral=True
             )
             return
 
@@ -501,10 +400,4 @@ class AdminCog(commands.Cog):
 
 
 async def setup(bot):
-    """
-    Required function to load this cog.
-
-    Args:
-        bot: Discord bot instance
-    """
     await bot.add_cog(AdminCog(bot))
