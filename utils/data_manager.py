@@ -1,15 +1,11 @@
 """
 Data management for Blindy2 blind test bot.
 
-This module handles persistent storage of:
-- Configuration (game channel ID, settings)
-- Player scores (points, wins, stats)
-
-Uses JSON files for simple, human-readable storage.
+Handles persistent storage of configuration, player scores, and game state
+using JSON files with atomic writes to prevent data corruption.
 """
 
 import json
-import os
 from pathlib import Path
 
 
@@ -17,29 +13,15 @@ class DataManager:
     """Manages reading and writing data to JSON files."""
 
     def __init__(self, data_dir: str = "data"):
-        """
-        Initialize the data manager.
-
-        Args:
-            data_dir: Directory where data files are stored
-        """
         self.data_dir = Path(data_dir)
         self.config_file = self.data_dir / "config.json"
         self.scores_file = self.data_dir / "scores.json"
         self.game_file = self.data_dir / "current_game.json"
-
-        # Ensure data directory exists
         self.data_dir.mkdir(exist_ok=True)
 
     def load_config(self) -> dict:
-        """
-        Load configuration from config.json.
-
-        Returns:
-            Configuration dictionary with defaults if file doesn't exist
-        """
+        """Load configuration from config.json, returning defaults if missing."""
         if not self.config_file.exists():
-            # Return default config
             return {"game_channel_id": None, "admin_permission": "manage_channels"}
 
         try:
@@ -47,38 +29,22 @@ class DataManager:
                 return json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error loading config.json: {e}")
-            print("Using default configuration.")
             return {"game_channel_id": None, "admin_permission": "manage_channels"}
 
     def save_config(self, config: dict):
-        """
-        Save configuration to config.json (atomic write).
-
-        Args:
-            config: Configuration dictionary to save
-        """
-        # Atomic write: write to temp file first, then rename
+        """Save configuration to config.json using an atomic write."""
         temp_file = self.config_file.with_suffix(".json.tmp")
-
         try:
             with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=2)
-
-            # Rename temp file to actual file (atomic operation)
             temp_file.replace(self.config_file)
         except IOError as e:
             print(f"Error saving config.json: {e}")
-            # Clean up temp file if it exists
             if temp_file.exists():
                 temp_file.unlink()
 
     def load_scores(self) -> dict:
-        """
-        Load scores from scores.json.
-
-        Returns:
-            Scores dictionary (user_id -> stats) or empty dict if file doesn't exist
-        """
+        """Load scores from scores.json, returning an empty dict if missing."""
         if not self.scores_file.exists():
             return {}
 
@@ -87,44 +53,24 @@ class DataManager:
                 return json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error loading scores.json: {e}")
-            print("Starting with empty scores.")
             return {}
 
     def save_scores(self, scores: dict):
-        """
-        Save scores to scores.json (atomic write).
-
-        Args:
-            scores: Scores dictionary to save
-        """
-        # Atomic write: write to temp file first, then rename
+        """Save scores to scores.json using an atomic write."""
         temp_file = self.scores_file.with_suffix(".json.tmp")
-
         try:
             with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(scores, f, indent=2)
-
-            # Rename temp file to actual file (atomic operation)
             temp_file.replace(self.scores_file)
         except IOError as e:
             print(f"Error saving scores.json: {e}")
-            # Clean up temp file if it exists
             if temp_file.exists():
                 temp_file.unlink()
 
     def add_score(self, user_id: str, username: str, points: int, match_type: str):
-        """
-        Add points to a user's score.
-
-        Args:
-            user_id: Discord user ID (as string)
-            username: User's display name
-            points: Points to add (1 or 2)
-            match_type: "artist", "title", or "both"
-        """
+        """Add points to a user's all-time score."""
         scores = self.load_scores()
 
-        # Initialize user entry if doesn't exist
         if user_id not in scores:
             scores[user_id] = {
                 "username": username,
@@ -134,8 +80,7 @@ class DataManager:
                 "partial_answers": 0,
             }
 
-        # Update stats
-        scores[user_id]["username"] = username  # Update name in case it changed
+        scores[user_id]["username"] = username
         scores[user_id]["total_points"] += points
         scores[user_id]["rounds_won"] += 1
 
@@ -144,46 +89,19 @@ class DataManager:
         else:
             scores[user_id]["partial_answers"] += 1
 
-        # Save updated scores
         self.save_scores(scores)
 
     def get_leaderboard(self, limit: int = 10) -> list[tuple[str, dict]]:
-        """
-        Get top N players sorted by score.
-
-        Args:
-            limit: Maximum number of entries to return
-
-        Returns:
-            List of (user_id, stats_dict) tuples, sorted by score (descending)
-        """
+        """Return the top N players sorted by total points descending."""
         scores = self.load_scores()
-
-        # Sort by total_points (descending), then by username (ascending)
         sorted_scores = sorted(
             scores.items(),
             key=lambda x: (-x[1]["total_points"], x[1]["username"].lower()),
         )
-
         return sorted_scores[:limit]
 
     def load_game(self) -> dict | None:
-        """
-        Load the current game from current_game.json.
-
-        Returns:
-            Game dictionary or None if no game exists
-
-        Game structure:
-        {
-            "name": "Game Name",
-            "rounds": [
-                {"artist": "artist1", "title": "title1"},
-                {"artist": "artist2", "title": "title2"}
-            ],
-            "current_round_index": 0
-        }
-        """
+        """Load the current game from current_game.json, returning None if missing."""
         if not self.game_file.exists():
             return None
 
@@ -195,29 +113,18 @@ class DataManager:
             return None
 
     def save_game(self, game: dict | None):
-        """
-        Save the current game to current_game.json (atomic write).
-
-        Args:
-            game: Game dictionary to save, or None to delete the game
-        """
+        """Save the current game to current_game.json, or delete it if game is None."""
         if game is None:
-            # Delete the game file
             if self.game_file.exists():
                 self.game_file.unlink()
             return
 
-        # Atomic write: write to temp file first, then rename
         temp_file = self.game_file.with_suffix(".json.tmp")
-
         try:
             with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(game, f, indent=2)
-
-            # Rename temp file to actual file (atomic operation)
             temp_file.replace(self.game_file)
         except IOError as e:
             print(f"Error saving current_game.json: {e}")
-            # Clean up temp file if it exists
             if temp_file.exists():
                 temp_file.unlink()

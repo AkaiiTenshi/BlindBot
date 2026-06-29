@@ -16,47 +16,40 @@ from datetime import datetime
 from utils.answer_checker import check_answer
 from utils.data_manager import DataManager
 
+TEAM_ROLES = {"Heapsters", "Stackos"}
+
 
 class GameCog(commands.Cog):
     """Cog for game logic and user-facing commands."""
 
     def __init__(self, bot):
-        """
-        Initialize the game cog.
-
-        Args:
-            bot: Discord bot instance
-        """
         self.bot = bot
         self.data_manager = DataManager()
 
-        # Game state (in-memory, lost on restart)
-        self.active = False  # Is a round currently running?
-        self.artist = None  # Correct artist (lowercase)
-        self.title = None  # Correct title (lowercase)
-        self.locked = False  # Has someone answered correctly?
-        self.winner_id = None  # Discord user ID of winner
-        self.winner_name = None  # Display name of winner
-        self.points_awarded = 0  # How many points awarded (1 or 2)
-        self.started_at = None  # When round started (for elapsed time)
-        self.round_number = 0  # Current round number
-        self.game_channel_id = None  # Where to listen for guesses
+        self.active = False
+        self.artist = None
+        self.title = None
+        self.locked = False
+        self.winner_id = None
+        self.winner_name = None
+        self.points_awarded = 0
+        self.started_at = None
+        self.round_number = 0
+        self.game_channel_id = None
 
-        # Multi-round game state
-        self.game_data = None  # Loaded game with multiple rounds
+        self.game_data = None
 
-        # Batch round input mode
-        self.batch_input_mode = False  # Is admin in batch input mode?
-        self.batch_input_user_id = None  # User ID who started batch mode
-        self.batch_input_channel_id = None  # Channel where batch mode was started
-        self.batch_input_count = 0  # How many rounds to expect
-        self.batch_input_received = 0  # How many rounds received so far
+        self.game_scores = {}
+        self.team_scores = {"Heapsters": 0, "Stackos": 0}
 
-        # Load game channel from config
+        self.batch_input_mode = False
+        self.batch_input_user_id = None
+        self.batch_input_channel_id = None
+        self.batch_input_count = 0
+        self.batch_input_received = 0
+
         config = self.data_manager.load_config()
         self.game_channel_id = config.get("game_channel_id")
-
-        # Load any existing game
         self.game_data = self.data_manager.load_game()
 
     def begin_round(self, artist: str, title: str) -> int:
@@ -101,30 +94,60 @@ class GameCog(commands.Cog):
         self.batch_input_count = count
         self.batch_input_received = 0
 
+    def reset_game_scores(self):
+        """Reset per-game scores and team totals. Called when a new game is created."""
+        self.game_scores = {}
+        self.team_scores = {"Heapsters": 0, "Stackos": 0}
+
+    def is_game_complete(self) -> bool:
+        """Return True if all rounds of the current game have been played."""
+        return (
+            self.game_data is not None
+            and self.game_data["current_round_index"] >= len(self.game_data["rounds"])
+        )
+
+    def build_game_leaderboard_embed(self) -> discord.Embed:
+        """Build an embed showing team standings and top individual players."""
+        heapsters = self.team_scores.get("Heapsters", 0)
+        stackos = self.team_scores.get("Stackos", 0)
+
+        if heapsters > stackos:
+            title = "🏆 Game Over! Heapsters win!"
+            color = 0xE74C3C
+        elif stackos > heapsters:
+            title = "🏆 Game Over! Stackos win!"
+            color = 0x3498DB
+        else:
+            title = "🏆 Game Over! It's a tie!"
+            color = 0x95A5A6
+
+        embed = discord.Embed(title=title, color=color)
+        embed.add_field(name="Heapsters", value=f"{heapsters} pts", inline=True)
+        embed.add_field(name="Stackos", value=f"{stackos} pts", inline=True)
+
+        sorted_players = sorted(
+            self.game_scores.values(), key=lambda x: -x["points"]
+        )
+        if sorted_players:
+            lines = [
+                f"{i}. {p['username']} ({p['team'] or 'No team'}) — {p['points']} pts"
+                for i, p in enumerate(sorted_players[:10], 1)
+            ]
+            embed.add_field(name="Top Players", value="\n".join(lines), inline=False)
+
+        return embed
+
     @commands.Cog.listener()
     async def on_message(self, message):
-        """
-        Called every time someone sends a message in Discord.
-        Processes guesses if the message is in the game channel.
-        Also handles batch round input from admins.
-
-        Args:
-            message: Discord message object
-        """
-        # Ignore messages from bots (including ourselves)
         if message.author.bot:
             return
 
-        # Check for batch input mode first
         if self.batch_input_mode and message.author.id == self.batch_input_user_id:
-            # Only intercept messages from the channel where batch mode was started
             if message.channel.id != self.batch_input_channel_id:
                 return
 
-            # Parse the message as "artist - title"
             content = message.content.strip()
 
-            # Check if user wants to cancel
             if content.lower() in ["cancel", "stop", "quit"]:
                 self.batch_input_mode = False
                 self.batch_input_user_id = None
@@ -134,25 +157,20 @@ class GameCog(commands.Cog):
                 )
                 return
 
-            # Try to parse artist and title
             if " - " in content:
                 parts = content.split(" - ", 1)
                 artist = parts[0].strip().lower()
                 title = parts[1].strip().lower()
 
                 if artist and title:
-                    # Add round to game
                     self.game_data["rounds"].append({"artist": artist, "title": title})
                     self.batch_input_received += 1
-
-                    # Save to file
                     self.data_manager.save_game(self.game_data)
 
                     remaining = self.batch_input_count - self.batch_input_received
                     if remaining > 0:
                         await message.add_reaction("✅")
                     else:
-                        # All rounds received
                         self.batch_input_mode = False
                         self.batch_input_user_id = None
                         self.batch_input_channel_id = None
@@ -173,32 +191,41 @@ class GameCog(commands.Cog):
                 )
                 return
 
-        # Only process messages in the game channel
         if self.game_channel_id is None or message.channel.id != self.game_channel_id:
             return
 
-        # Only process if round is active and not locked
         if not self.active or self.locked:
             return
 
-        # Validate the answer
         is_correct, points, match_type = check_answer(
             message.content, self.artist, self.title
         )
 
-        # If correct, lock the round and award points
         if is_correct:
             self.locked = True
             self.winner_id = message.author.id
             self.winner_name = message.author.display_name
             self.points_awarded = points
 
-            # Save to persistent storage
             self.data_manager.add_score(
                 str(message.author.id), message.author.display_name, points, match_type
             )
 
-            # Announce the win
+            team = next(
+                (role.name for role in message.author.roles if role.name in TEAM_ROLES),
+                None,
+            )
+            user_id_str = str(message.author.id)
+            if user_id_str not in self.game_scores:
+                self.game_scores[user_id_str] = {
+                    "username": message.author.display_name,
+                    "points": 0,
+                    "team": team,
+                }
+            self.game_scores[user_id_str]["points"] += points
+            if team:
+                self.team_scores[team] += points
+
             if match_type == "both":
                 await message.channel.send(
                     f"✅ {message.author.display_name} got both! (+{points} points)\n"
@@ -215,12 +242,11 @@ class GameCog(commands.Cog):
                     f"🔒 Question locked!"
                 )
 
-            # Auto-end the round after a short delay (3 seconds)
-
             round_num_snapshot = self.round_number
             await asyncio.sleep(3)
 
-            if not self.active or self.round_number != round_num_snapshot: return
+            if not self.active or self.round_number != round_num_snapshot:
+                return
             info = self.finish_round()
 
             await message.channel.send(
@@ -229,22 +255,19 @@ class GameCog(commands.Cog):
                 f"Winner: {info['winner_name']} (+{info['points_awarded']} points)"
             )
 
-        # If incorrect, do nothing (silent rejection)
+            if self.is_game_complete():
+                await message.channel.send(embed=self.build_game_leaderboard_embed())
 
     @app_commands.command(name="scores", description="Show top 10 leaderboard")
     async def scores(self, interaction: Interaction):
-        """Display the leaderboard."""
+        """Display the all-time leaderboard."""
         leaderboard = self.data_manager.get_leaderboard(limit=10)
 
         if not leaderboard:
             await interaction.response.send_message("No scores yet!")
             return
 
-        # Create a nice embed (colored box with formatted text)
-        embed = discord.Embed(
-            title="🏆 Top 10 Leaderboard",
-            color=0xFFD700,  # Gold color
-        )
+        embed = discord.Embed(title="🏆 Top 10 Leaderboard", color=0xFFD700)
 
         for rank, (user_id, data) in enumerate(leaderboard, start=1):
             embed.add_field(
@@ -262,17 +285,11 @@ class GameCog(commands.Cog):
             await interaction.response.send_message("No active round.")
             return
 
-        # Calculate elapsed time
         elapsed = datetime.now() - self.started_at
-        elapsed_str = str(elapsed).split(".")[0]  # Remove microseconds
-
-        # Format status
+        elapsed_str = str(elapsed).split(".")[0]
         status = "🔒 Locked" if self.locked else "🟢 Active"
 
-        embed = discord.Embed(
-            title=f"Round {self.round_number}",
-            color=0x00FF00,  # Green
-        )
+        embed = discord.Embed(title=f"Round {self.round_number}", color=0x00FF00)
         embed.add_field(name="Status", value=status, inline=True)
         embed.add_field(name="Time Elapsed", value=elapsed_str, inline=True)
 
@@ -285,12 +302,14 @@ class GameCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="game_scores", description="Show current game team standings and top players")
+    async def game_scores(self, interaction: Interaction):
+        """Display team scores and individual standings for the current game."""
+        if not self.game_data:
+            await interaction.response.send_message("No active game.", ephemeral=True)
+            return
+        await interaction.response.send_message(embed=self.build_game_leaderboard_embed())
+
 
 async def setup(bot):
-    """
-    Required function to load this cog.
-
-    Args:
-        bot: Discord bot instance
-    """
     await bot.add_cog(GameCog(bot))
