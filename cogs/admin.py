@@ -12,7 +12,6 @@ This module provides commands for game administrators:
 import discord
 from discord import app_commands, Interaction
 from discord.ext import commands
-from datetime import datetime
 from typing import Optional
 
 from utils.checks import has_manage_channels
@@ -50,7 +49,7 @@ class AdminCog(commands.Cog):
         # Update the game cog's channel ID
         game_cog = self.bot.get_cog("GameCog")
         if game_cog:
-            game_cog.game_channel_id = channel_id
+            game_cog.set_game_channel(channel_id)
 
         # Confirm (ephemeral = only command user sees this)
         await interaction.response.send_message(
@@ -101,26 +100,15 @@ class AdminCog(commands.Cog):
             )
             return
 
-        # Start the round
-        game_cog.active = True
-        game_cog.artist = artist
-        game_cog.title = title
-        game_cog.locked = False
-        game_cog.winner_id = None
-        game_cog.winner_name = None
-        game_cog.points_awarded = 0
-        game_cog.started_at = datetime.now()
-        game_cog.round_number += 1
+        round_num = game_cog.begin_round(artist, title)
 
         # Announce in game channel
         game_channel = self.bot.get_channel(game_cog.game_channel_id)
-        await game_channel.send(
-            f"🎵 **Round {game_cog.round_number} started!** Start guessing!"
-        )
+        await game_channel.send(f"🎵 **Round {round_num} started!** Start guessing!")
 
         # Confirm to admin (only admin sees this)
         await interaction.response.send_message(
-            f"✅ Round {game_cog.round_number} started!\nAnswer: {artist} - {title}",
+            f"✅ Round {round_num} started!\nAnswer: {artist} - {title}",
             ephemeral=True,
         )
 
@@ -144,28 +132,20 @@ class AdminCog(commands.Cog):
             )
             return
 
-        # Gather round info
-        round_num = game_cog.round_number
-        answer = f"{game_cog.artist} - {game_cog.title}"
+        info = game_cog.finish_round()
 
-        # End the round
-        game_cog.active = False
-
-        # Announce in game channel
         game_channel = self.bot.get_channel(game_cog.game_channel_id)
 
-        if game_cog.locked:
-            # Someone won
+        if info["locked"]:
             await game_channel.send(
-                f"📊 **Round {round_num} ended!**\n"
-                f"Answer: {answer}\n"
-                f"Winner: {game_cog.winner_name} (+{game_cog.points_awarded} points)"
+                f"📊 **Round {info['round_number']} ended!**\n"
+                f"Answer: {info['answer']}\n"
+                f"Winner: {info['winner_name']} (+{info['points_awarded']} points)"
             )
         else:
-            # No one won
             await game_channel.send(
-                f"📊 **Round {round_num} ended!**\n"
-                f"Answer: {answer}\n"
+                f"📊 **Round {info['round_number']} ended!**\n"
+                f"Answer: {info['answer']}\n"
                 f"No one guessed correctly."
             )
 
@@ -198,9 +178,7 @@ class AdminCog(commands.Cog):
         artist = " ".join(artist.strip().split()).lower()
         title = " ".join(title.strip().split()).lower()
 
-        # Update
-        game_cog.artist = artist
-        game_cog.title = title
+        game_cog.update_answer(artist, title)
 
         await interaction.response.send_message(
             f"✅ Answer updated to: {artist} - {title}", ephemeral=True
@@ -298,11 +276,7 @@ class AdminCog(commands.Cog):
         self.data_manager.save_game(game_cog.game_data)
 
         if rounds > 0:
-            # Enable batch input mode
-            game_cog.batch_input_mode = True
-            game_cog.batch_input_user_id = interaction.user.id
-            game_cog.batch_input_count = rounds
-            game_cog.batch_input_received = 0
+            game_cog.start_batch_input(interaction.user.id, interaction.channel.id, rounds)
 
             await interaction.response.send_message(
                 f"✅ Created game: **{name}**\n"
@@ -428,16 +402,7 @@ class AdminCog(commands.Cog):
             )
             return
 
-        # Start the round
-        game_cog.active = True
-        game_cog.artist = artist
-        game_cog.title = title
-        game_cog.locked = False
-        game_cog.winner_id = None
-        game_cog.winner_name = None
-        game_cog.points_awarded = 0
-        game_cog.started_at = datetime.now()
-        game_cog.round_number += 1
+        game_cog.begin_round(artist, title)
 
         # Increment for next time
         game_cog.game_data["current_round_index"] = current_index + 1

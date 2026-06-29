@@ -22,13 +22,11 @@ async def has_manage_channels(interaction: Interaction) -> bool:
         True if user has permission, False otherwise
         (Also sends an error message to the user if they don't have permission)
     """
-    # Check if user has the manage_channels permission
     if interaction.user.guild_permissions.manage_channels:
         return True
     else:
-        # Send error message (only visible to the command user)
         await interaction.response.send_message(
             "❌ You need 'Manage Channels' permission to use this command.",
-            ephemeral=True,  # Only the command user sees this
+            ephemeral=True,
         )
         return False

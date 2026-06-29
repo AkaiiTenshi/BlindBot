@@ -8,6 +8,7 @@ This module handles:
 """
 
 import discord
+import asyncio
 from discord import app_commands, Interaction
 from discord.ext import commands
 from datetime import datetime
@@ -47,6 +48,7 @@ class GameCog(commands.Cog):
         # Batch round input mode
         self.batch_input_mode = False  # Is admin in batch input mode?
         self.batch_input_user_id = None  # User ID who started batch mode
+        self.batch_input_channel_id = None  # Channel where batch mode was started
         self.batch_input_count = 0  # How many rounds to expect
         self.batch_input_received = 0  # How many rounds received so far
 
@@ -56,6 +58,48 @@ class GameCog(commands.Cog):
 
         # Load any existing game
         self.game_data = self.data_manager.load_game()
+
+    def begin_round(self, artist: str, title: str) -> int:
+        """Start a new round. Returns the new round number."""
+        self.active = True
+        self.artist = artist
+        self.title = title
+        self.locked = False
+        self.winner_id = None
+        self.winner_name = None
+        self.points_awarded = 0
+        self.started_at = datetime.now()
+        self.round_number += 1
+        return self.round_number
+
+    def finish_round(self) -> dict:
+        """End the active round. Returns a summary dict for announcements."""
+        info = {
+            "round_number": self.round_number,
+            "answer": f"{self.artist} - {self.title}",
+            "locked": self.locked,
+            "winner_name": self.winner_name,
+            "points_awarded": self.points_awarded,
+        }
+        self.active = False
+        return info
+
+    def update_answer(self, artist: str, title: str):
+        """Update the answer mid-round."""
+        self.artist = artist
+        self.title = title
+
+    def set_game_channel(self, channel_id: int):
+        """Set the channel ID where guesses are accepted."""
+        self.game_channel_id = channel_id
+
+    def start_batch_input(self, user_id: int, channel_id: int, count: int):
+        """Enter batch input mode for a given user in a given channel."""
+        self.batch_input_mode = True
+        self.batch_input_user_id = user_id
+        self.batch_input_channel_id = channel_id
+        self.batch_input_count = count
+        self.batch_input_received = 0
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -73,6 +117,10 @@ class GameCog(commands.Cog):
 
         # Check for batch input mode first
         if self.batch_input_mode and message.author.id == self.batch_input_user_id:
+            # Only intercept messages from the channel where batch mode was started
+            if message.channel.id != self.batch_input_channel_id:
+                return
+
             # Parse the message as "artist - title"
             content = message.content.strip()
 
@@ -80,6 +128,7 @@ class GameCog(commands.Cog):
             if content.lower() in ["cancel", "stop", "quit"]:
                 self.batch_input_mode = False
                 self.batch_input_user_id = None
+                self.batch_input_channel_id = None
                 await message.channel.send(
                     f"❌ Batch input cancelled. Added {self.batch_input_received} rounds."
                 )
@@ -106,6 +155,7 @@ class GameCog(commands.Cog):
                         # All rounds received
                         self.batch_input_mode = False
                         self.batch_input_user_id = None
+                        self.batch_input_channel_id = None
                         await message.add_reaction("✅")
                         await message.channel.send(
                             f"✅ All {self.batch_input_received} rounds added to **{self.game_data['name']}**!\n"
@@ -166,20 +216,17 @@ class GameCog(commands.Cog):
                 )
 
             # Auto-end the round after a short delay (3 seconds)
-            import asyncio
 
+            round_num_snapshot = self.round_number
             await asyncio.sleep(3)
 
-            # End the round
-            round_num = self.round_number
-            answer = f"{self.artist} - {self.title}"
-            self.active = False
+            if not self.active or self.round_number != round_num_snapshot: return
+            info = self.finish_round()
 
-            # Announce end
             await message.channel.send(
-                f"📊 **Round {round_num} ended!**\n"
-                f"Answer: {answer}\n"
-                f"Winner: {self.winner_name} (+{self.points_awarded} points)"
+                f"📊 **Round {info['round_number']} ended!**\n"
+                f"Answer: {info['answer']}\n"
+                f"Winner: {info['winner_name']} (+{info['points_awarded']} points)"
             )
 
         # If incorrect, do nothing (silent rejection)

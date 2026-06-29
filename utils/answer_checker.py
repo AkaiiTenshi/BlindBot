@@ -39,7 +39,7 @@ def check_answer(message: str, artist: str, title: str) -> tuple[bool, int, str 
         (True, 2, "both")
 
         >>> check_answer("grave dans la roche sniper", "Sniper", "Grave dans la roche")
-        (False, 0, None)  # Wrong order
+        (True, 2, "both")  # Wrong order
 
         >>> check_answer("sniper grave dans la", "Sniper", "Grave dans la roche")
         (True, 1, "artist")  # Artist exact, title partial
@@ -73,6 +73,9 @@ def check_answer(message: str, artist: str, title: str) -> tuple[bool, int, str 
     # Both in correct order: "<artist> <title>"
     both_correct_order = f"{artist_lower} {title_lower}"
     if guess == both_correct_order:
+        return (True, 2, "both")
+    both_reverse_order = f"{title_lower} {artist_lower}"
+    if guess == both_reverse_order:
         return (True, 2, "both")
 
     # Step 5: Check partial matches
