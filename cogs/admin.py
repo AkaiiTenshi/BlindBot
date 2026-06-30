@@ -9,6 +9,7 @@ This module provides commands for game administrators:
 - Reset scores
 """
 
+import asyncio
 import discord
 from discord import app_commands, Interaction
 from discord.ext import commands
@@ -261,6 +262,69 @@ class AdminCog(commands.Cog):
         await interaction.response.send_message(
             f"✅ Added round {round_count}: {artist} - {title}\n"
             f"Game: **{game_cog.game_data['name']}** ({round_count} rounds)",
+            ephemeral=True,
+        )
+
+    @app_commands.command(name="start_game", description="Start the game and auto-advance rounds after each correct answer")
+    @app_commands.check(has_manage_channels)
+    async def start_game(self, interaction: Interaction):
+        """Start the game in auto mode — rounds advance automatically 5s after each correct answer."""
+        game_cog = self.bot.get_cog("GameCog")
+
+        if not game_cog:
+            await interaction.response.send_message("❌ Game system not loaded!", ephemeral=True)
+            return
+
+        if not game_cog.game_data:
+            await interaction.response.send_message(
+                "❌ No game exists! Create one first with `/create_game` and add rounds.", ephemeral=True
+            )
+            return
+
+        if not game_cog.game_data["rounds"]:
+            await interaction.response.send_message(
+                "❌ No rounds in game! Add rounds with `/add_round`.", ephemeral=True
+            )
+            return
+
+        if game_cog.active:
+            await interaction.response.send_message(
+                "❌ Round already active! Use `/end_round` first.", ephemeral=True
+            )
+            return
+
+        if game_cog.game_channel_id is None:
+            await interaction.response.send_message(
+                "❌ Game channel not set! Use `/set_channel` first.", ephemeral=True
+            )
+            return
+
+        current_index = game_cog.game_data["current_round_index"]
+
+        if current_index >= len(game_cog.game_data["rounds"]):
+            await interaction.response.send_message(
+                f"❌ Game **{game_cog.game_data['name']}** is already complete! Use `/create_game` to start a new one.",
+                ephemeral=True,
+            )
+            return
+
+        game_cog.auto_game_mode = True
+
+        current_round = game_cog.game_data["rounds"][current_index]
+        game_cog.begin_round(current_round["artist"], current_round["title"])
+        game_cog.game_data["current_round_index"] = current_index + 1
+        self.data_manager.save_game(game_cog.game_data)
+
+        game_channel = self.bot.get_channel(game_cog.game_channel_id)
+        rounds_total = len(game_cog.game_data["rounds"])
+        await game_channel.send(
+            f"🎵 **Round {current_index + 1}/{rounds_total}** "
+            f"(Game: {game_cog.game_data['name']}) - Start guessing!"
+        )
+
+        await interaction.response.send_message(
+            f"✅ Auto-game started! **{game_cog.game_data['name']}** ({rounds_total} rounds)\n"
+            f"Rounds will auto-advance 5 seconds after each correct answer.",
             ephemeral=True,
         )
 

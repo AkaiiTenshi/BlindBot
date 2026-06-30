@@ -41,6 +41,7 @@ class GameCog(commands.Cog):
 
         self.game_scores = {}
         self.team_scores = {"Heapsters": 0, "Stackos": 0}
+        self.auto_game_mode = False
 
         self.batch_input_mode = False
         self.batch_input_user_id = None
@@ -95,9 +96,10 @@ class GameCog(commands.Cog):
         self.batch_input_received = 0
 
     def reset_game_scores(self):
-        """Reset per-game scores and team totals. Called when a new game is created."""
+        """Reset per-game scores, team totals, and auto-game mode."""
         self.game_scores = {}
         self.team_scores = {"Heapsters": 0, "Stackos": 0}
+        self.auto_game_mode = False
 
     def is_game_complete(self) -> bool:
         """Return True if all rounds of the current game have been played."""
@@ -136,6 +138,31 @@ class GameCog(commands.Cog):
             embed.add_field(name="Top Players", value="\n".join(lines), inline=False)
 
         return embed
+
+    async def _advance_game(self):
+        """Wait 5 seconds then start the next round automatically."""
+        await asyncio.sleep(5)
+
+        if not self.auto_game_mode or not self.game_data:
+            return
+
+        if self.is_game_complete():
+            self.auto_game_mode = False
+            return
+
+        current_index = self.game_data["current_round_index"]
+        current_round = self.game_data["rounds"][current_index]
+
+        self.begin_round(current_round["artist"], current_round["title"])
+        self.game_data["current_round_index"] = current_index + 1
+        self.data_manager.save_game(self.game_data)
+
+        game_channel = self.bot.get_channel(self.game_channel_id)
+        rounds_total = len(self.game_data["rounds"])
+        await game_channel.send(
+            f"🎵 **Round {current_index + 1}/{rounds_total}** "
+            f"(Game: {self.game_data['name']}) - Start guessing!"
+        )
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -256,7 +283,10 @@ class GameCog(commands.Cog):
             )
 
             if self.is_game_complete():
+                self.auto_game_mode = False
                 await message.channel.send(embed=self.build_game_leaderboard_embed())
+            elif self.auto_game_mode:
+                asyncio.create_task(self._advance_game())
 
     @app_commands.command(name="scores", description="Show top 10 leaderboard")
     async def scores(self, interaction: Interaction):
