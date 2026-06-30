@@ -353,6 +353,46 @@ class GameCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="rules", description="Show the blind test rules")
+    async def rules(self, interaction: Interaction):
+        channel_mention = f"<#{self.game_channel_id}>" if self.game_channel_id else "#events"
+
+        embed = discord.Embed(title="Règles / Rules", color=0x3498DB)
+
+        embed.add_field(
+            name="🇫🇷 Règles",
+            value=(
+                f"Envoyez le nom de l'artiste et/ou du titre dans {channel_mention}\n\n"
+                "**Exemple :** abba - Gimme! Gimme! Gimme!\n\n"
+                "✅ **Messages acceptés :**\n"
+                "`abba` → 1 point\n"
+                "`Gimme! Gimme! Gimme!` → 1 point\n"
+                "`abba Gimme! Gimme! Gimme!` → 2 points\n\n"
+                "❌ **Fautes (0 points) :**\n"
+                "`Gimme! Gimme! Gimme` ← ponctuation manquante\n"
+                "`abbba` ← faute de frappe"
+            ),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="🇬🇧 Rules",
+            value=(
+                f"Write the artist's name and/or the song title in {channel_mention}\n\n"
+                "**Example:** abba - Gimme! Gimme! Gimme!\n\n"
+                "✅ **Accepted answers:**\n"
+                "`abba` → 1 point\n"
+                "`Gimme! Gimme! Gimme!` → 1 point\n"
+                "`abba Gimme! Gimme! Gimme!` → 2 points\n\n"
+                "❌ **Wrong answers (0 points):**\n"
+                "`Gimme! Gimme! Gimme` ← missing punctuation\n"
+                "`abbba` ← typo"
+            ),
+            inline=False,
+        )
+
+        await interaction.response.send_message(embed=embed)
+
     @app_commands.command(name="game_scores", description="Show current game team standings and top players")
     async def game_scores(self, interaction: Interaction):
         """Display team scores and individual standings for the current game."""
