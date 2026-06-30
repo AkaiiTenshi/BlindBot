@@ -1,12 +1,3 @@
-"""
-Game logic and user commands for Blindy2 blind test bot.
-
-This module handles:
-- Game state (active round, locked status, winner)
-- Processing player guesses
-- User commands (/scores, /current)
-"""
-
 import discord
 import asyncio
 from discord import app_commands, Interaction
@@ -15,8 +6,6 @@ from datetime import datetime
 
 from utils.answer_checker import check_answer
 from utils.data_manager import DataManager
-
-TEAM_ROLES = {"Heapsters", "Stackos"}
 
 
 class GameCog(commands.Cog):
@@ -30,9 +19,12 @@ class GameCog(commands.Cog):
         self.artist = None
         self.title = None
         self.locked = False
-        self.winner_id = None
-        self.winner_name = None
-        self.points_awarded = 0
+        self.artist_found = False
+        self.artist_found_by_id = None
+        self.artist_found_by_name = None
+        self.title_found = False
+        self.title_found_by_id = None
+        self.title_found_by_name = None
         self.started_at = None
         self.round_number = 0
         self.game_channel_id = None
@@ -40,7 +32,7 @@ class GameCog(commands.Cog):
         self.game_data = None
 
         self.game_scores = {}
-        self.team_scores = {"Heapsters": 0, "Stackos": 0}
+        self.team_scores = {}
         self.auto_game_mode = False
 
         self.batch_input_mode = False
@@ -59,9 +51,12 @@ class GameCog(commands.Cog):
         self.artist = artist
         self.title = title
         self.locked = False
-        self.winner_id = None
-        self.winner_name = None
-        self.points_awarded = 0
+        self.artist_found = False
+        self.artist_found_by_id = None
+        self.artist_found_by_name = None
+        self.title_found = False
+        self.title_found_by_id = None
+        self.title_found_by_name = None
         self.started_at = datetime.now()
         self.round_number += 1
         return self.round_number
@@ -71,11 +66,13 @@ class GameCog(commands.Cog):
         info = {
             "round_number": self.round_number,
             "answer": f"{self.artist} - {self.title}",
-            "locked": self.locked,
-            "winner_name": self.winner_name,
-            "points_awarded": self.points_awarded,
+            "artist_found": self.artist_found,
+            "artist_found_by": self.artist_found_by_name,
+            "title_found": self.title_found,
+            "title_found_by": self.title_found_by_name,
         }
         self.active = False
+        self.locked = False
         return info
 
     def update_answer(self, artist: str, title: str):
@@ -98,7 +95,7 @@ class GameCog(commands.Cog):
     def reset_game_scores(self):
         """Reset per-game scores, team totals, and auto-game mode."""
         self.game_scores = {}
-        self.team_scores = {"Heapsters": 0, "Stackos": 0}
+        self.team_scores = {}
         self.auto_game_mode = False
 
     def is_game_complete(self) -> bool:
@@ -110,22 +107,21 @@ class GameCog(commands.Cog):
 
     def build_game_leaderboard_embed(self) -> discord.Embed:
         """Build an embed showing team standings and top individual players."""
-        heapsters = self.team_scores.get("Heapsters", 0)
-        stackos = self.team_scores.get("Stackos", 0)
+        sorted_teams = sorted(self.team_scores.items(), key=lambda x: -x[1])
 
-        if heapsters > stackos:
-            title = "🏆 Game Over! Heapsters win!"
-            color = 0xE74C3C
-        elif stackos > heapsters:
-            title = "🏆 Game Over! Stackos win!"
-            color = 0x3498DB
-        else:
-            title = "🏆 Game Over! It's a tie!"
+        if len(sorted_teams) >= 2 and sorted_teams[0][1] == sorted_teams[1][1]:
+            title_str = "🏆 Game Over! It's a tie!"
             color = 0x95A5A6
+        elif sorted_teams:
+            title_str = f"🏆 Game Over! {sorted_teams[0][0]} win!"
+            color = 0xFFD700
+        else:
+            title_str = "🏆 Game Over!"
+            color = 0xFFD700
 
-        embed = discord.Embed(title=title, color=color)
-        embed.add_field(name="Heapsters", value=f"{heapsters} pts", inline=True)
-        embed.add_field(name="Stackos", value=f"{stackos} pts", inline=True)
+        embed = discord.Embed(title=title_str, color=color)
+        for team_name, pts in sorted_teams:
+            embed.add_field(name=team_name, value=f"{pts} pts", inline=True)
 
         sorted_players = sorted(
             self.game_scores.values(), key=lambda x: -x["points"]
@@ -153,7 +149,7 @@ class GameCog(commands.Cog):
         current_index = self.game_data["current_round_index"]
         current_round = self.game_data["rounds"][current_index]
 
-        self.begin_round(current_round["artist"], current_round["title"])
+        self.begin_round(current_round["artist"]["name"], current_round["title"]["name"])
         self.game_data["current_round_index"] = current_index + 1
         self.data_manager.save_game(self.game_data)
 
@@ -190,7 +186,10 @@ class GameCog(commands.Cog):
                 title = parts[1].strip().lower()
 
                 if artist and title:
-                    self.game_data["rounds"].append({"artist": artist, "title": title})
+                    self.game_data["rounds"].append({
+                        "artist": {"name": artist, "user_id_answer": 0},
+                        "title": {"name": title, "user_id_answer": 0},
+                    })
                     self.batch_input_received += 1
                     self.data_manager.save_game(self.game_data)
 
@@ -228,47 +227,62 @@ class GameCog(commands.Cog):
             message.content, self.artist, self.title
         )
 
-        if is_correct:
+        if not is_correct:
+            return
+
+        award_artist = (match_type in ("artist", "both")) and not self.artist_found
+        award_title = (match_type in ("title", "both")) and not self.title_found
+
+        if not award_artist and not award_title:
+            return
+
+        actual_points = (1 if award_artist else 0) + (1 if award_title else 0)
+
+        config = self.data_manager.load_config()
+        team_role_ids = config.get("team_role_ids", [])
+        team_role = next((r for r in message.author.roles if r.id in team_role_ids), None)
+        team = team_role.name if team_role else None
+
+        self.data_manager.add_score(
+            str(message.author.id), message.author.display_name, actual_points, match_type
+        )
+        user_id_str = str(message.author.id)
+        if user_id_str not in self.game_scores:
+            self.game_scores[user_id_str] = {
+                "username": message.author.display_name,
+                "points": 0,
+                "team": team,
+            }
+        self.game_scores[user_id_str]["points"] += actual_points
+        if team:
+            self.team_scores[team] = self.team_scores.get(team, 0) + actual_points
+
+        if award_artist:
+            self.artist_found = True
+            self.artist_found_by_id = message.author.id
+            self.artist_found_by_name = message.author.display_name
+        if award_title:
+            self.title_found = True
+            self.title_found_by_id = message.author.id
+            self.title_found_by_name = message.author.display_name
+
+        if award_artist and award_title:
+            await message.channel.send(
+                f"✅ {message.author.display_name} got both! (+{actual_points} points)"
+            )
+        elif award_artist:
+            suffix = "🔒 Round locked!" if self.title_found else "🎵 Title still open!"
+            await message.channel.send(
+                f"✅ {message.author.display_name} got the artist! (+1 point)\n{suffix}"
+            )
+        elif award_title:
+            suffix = "🔒 Round locked!" if self.artist_found else "🎵 Artist still open!"
+            await message.channel.send(
+                f"✅ {message.author.display_name} got the title! (+1 point)\n{suffix}"
+            )
+
+        if self.artist_found and self.title_found:
             self.locked = True
-            self.winner_id = message.author.id
-            self.winner_name = message.author.display_name
-            self.points_awarded = points
-
-            self.data_manager.add_score(
-                str(message.author.id), message.author.display_name, points, match_type
-            )
-
-            team = next(
-                (role.name for role in message.author.roles if role.name in TEAM_ROLES),
-                None,
-            )
-            user_id_str = str(message.author.id)
-            if user_id_str not in self.game_scores:
-                self.game_scores[user_id_str] = {
-                    "username": message.author.display_name,
-                    "points": 0,
-                    "team": team,
-                }
-            self.game_scores[user_id_str]["points"] += points
-            if team:
-                self.team_scores[team] += points
-
-            if match_type == "both":
-                await message.channel.send(
-                    f"✅ {message.author.display_name} got both! (+{points} points)\n"
-                    f"🔒 Question locked!"
-                )
-            elif match_type == "artist":
-                await message.channel.send(
-                    f"✅ {message.author.display_name} got the artist! (+{points} point)\n"
-                    f"🔒 Question locked!"
-                )
-            elif match_type == "title":
-                await message.channel.send(
-                    f"✅ {message.author.display_name} got the title! (+{points} point)\n"
-                    f"🔒 Question locked!"
-                )
-
             round_num_snapshot = self.round_number
             await asyncio.sleep(3)
 
@@ -276,10 +290,16 @@ class GameCog(commands.Cog):
                 return
             info = self.finish_round()
 
+            if info["artist_found_by"] == info["title_found_by"]:
+                result_line = f"🏆 Both found by: {info['artist_found_by']}"
+            else:
+                result_line = (
+                    f"🎵 Artist: {info['artist_found_by'] or 'Nobody'}\n"
+                    f"🎸 Title: {info['title_found_by'] or 'Nobody'}"
+                )
             await message.channel.send(
                 f"📊 **Round {info['round_number']} ended!**\n"
-                f"Answer: {info['answer']}\n"
-                f"Winner: {info['winner_name']} (+{info['points_awarded']} points)"
+                f"Answer: {info['answer']}\n{result_line}"
             )
 
             if self.is_game_complete():
@@ -317,18 +337,19 @@ class GameCog(commands.Cog):
 
         elapsed = datetime.now() - self.started_at
         elapsed_str = str(elapsed).split(".")[0]
-        status = "🔒 Locked" if self.locked else "🟢 Active"
 
         embed = discord.Embed(title=f"Round {self.round_number}", color=0x00FF00)
-        embed.add_field(name="Status", value=status, inline=True)
-        embed.add_field(name="Time Elapsed", value=elapsed_str, inline=True)
+        embed.add_field(name="Time Elapsed", value=elapsed_str, inline=False)
 
-        if self.locked:
-            embed.add_field(
-                name="Winner",
-                value=f"{self.winner_name} (+{self.points_awarded} points)",
-                inline=False,
-            )
+        if self.artist_found:
+            embed.add_field(name="Artist", value=f"✅ Found by {self.artist_found_by_name}", inline=True)
+        else:
+            embed.add_field(name="Artist", value="⏳ Not found yet", inline=True)
+
+        if self.title_found:
+            embed.add_field(name="Title", value=f"✅ Found by {self.title_found_by_name}", inline=True)
+        else:
+            embed.add_field(name="Title", value="⏳ Not found yet", inline=True)
 
         await interaction.response.send_message(embed=embed)
 

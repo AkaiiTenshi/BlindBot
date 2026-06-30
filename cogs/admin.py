@@ -1,21 +1,10 @@
-"""
-Admin commands for Blindy2 blind test bot.
-
-This module provides commands for game administrators:
-- Set game channel
-- Start/end rounds
-- Update answers
-- Reveal answers
-- Reset scores
-"""
-
 import asyncio
 import discord
 from discord import app_commands, Interaction
 from discord.ext import commands
 from typing import Optional
 
-from utils.checks import has_manage_channels
+from utils.checks import has_admin_role
 from utils.data_manager import DataManager
 
 
@@ -26,10 +15,37 @@ class AdminCog(commands.Cog):
         self.bot = bot
         self.data_manager = DataManager()
 
+    @app_commands.command(name="set_admin_role", description="Set the role that can use admin commands")
+    @app_commands.describe(role="The role to grant admin access")
+    async def set_admin_role(self, interaction: Interaction, role: discord.Role):
+        if not interaction.user.guild_permissions.manage_channels:
+            await interaction.response.send_message(
+                "❌ You need 'Manage Channels' permission to set the admin role.", ephemeral=True
+            )
+            return
+        config = self.data_manager.load_config()
+        config["admin_role_id"] = role.id
+        self.data_manager.save_config(config)
+        await interaction.response.send_message(
+            f"✅ Admin role set to {role.mention}", ephemeral=True
+        )
+
+    @app_commands.command(name="set_team_roles", description="Set the roles used for team scoring")
+    @app_commands.describe(team1="First team role", team2="Second team role (optional)")
+    @app_commands.check(has_admin_role)
+    async def set_team_roles(self, interaction: Interaction, team1: discord.Role, team2: Optional[discord.Role] = None):
+        config = self.data_manager.load_config()
+        ids = [team1.id]
+        if team2:
+            ids.append(team2.id)
+        config["team_role_ids"] = ids
+        self.data_manager.save_config(config)
+        names = team1.name + (f", {team2.name}" if team2 else "")
+        await interaction.response.send_message(f"✅ Team roles set: {names}", ephemeral=True)
+
     @app_commands.command(name="set_channel", description="Set current channel as game channel")
-    @app_commands.check(has_manage_channels)
+    @app_commands.check(has_admin_role)
     async def set_channel(self, interaction: Interaction):
-        """Configure which channel to use for the game."""
         channel_id = interaction.channel.id
 
         config = self.data_manager.load_config()
@@ -46,12 +62,11 @@ class AdminCog(commands.Cog):
 
     @app_commands.command(name="start_round", description="Start a new blind test round")
     @app_commands.describe(
-        artist="Artist name (lowercase recommended)",
-        title="Song title (lowercase recommended)",
+        artist="Artist name",
+        title="Song title",
     )
-    @app_commands.check(has_manage_channels)
+    @app_commands.check(has_admin_role)
     async def start_round(self, interaction: Interaction, artist: str, title: str):
-        """Start a new round with the given answer."""
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
@@ -89,9 +104,8 @@ class AdminCog(commands.Cog):
         )
 
     @app_commands.command(name="end_round", description="End the current round")
-    @app_commands.check(has_manage_channels)
+    @app_commands.check(has_admin_role)
     async def end_round(self, interaction: Interaction):
-        """End the active round and show results."""
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
@@ -105,18 +119,20 @@ class AdminCog(commands.Cog):
         info = game_cog.finish_round()
         game_channel = self.bot.get_channel(game_cog.game_channel_id)
 
-        if info["locked"]:
-            await game_channel.send(
-                f"📊 **Round {info['round_number']} ended!**\n"
-                f"Answer: {info['answer']}\n"
-                f"Winner: {info['winner_name']} (+{info['points_awarded']} points)"
-            )
+        artist_by = info.get("artist_found_by") or "Nobody"
+        title_by = info.get("title_found_by") or "Nobody"
+        if info["artist_found"] or info["title_found"]:
+            if artist_by == title_by:
+                result = f"🏆 Both found by: {artist_by}"
+            else:
+                result = f"🎵 Artist: {artist_by}\n🎸 Title: {title_by}"
         else:
-            await game_channel.send(
-                f"📊 **Round {info['round_number']} ended!**\n"
-                f"Answer: {info['answer']}\n"
-                f"No one guessed correctly."
-            )
+            result = "No one guessed correctly."
+
+        await game_channel.send(
+            f"📊 **Round {info['round_number']} ended!**\n"
+            f"Answer: {info['answer']}\n{result}"
+        )
 
         if game_cog.is_game_complete():
             await game_channel.send(embed=game_cog.build_game_leaderboard_embed())
@@ -125,9 +141,8 @@ class AdminCog(commands.Cog):
 
     @app_commands.command(name="set_answer", description="Correct the answer if you made a typo")
     @app_commands.describe(artist="Correct artist name", title="Correct song title")
-    @app_commands.check(has_manage_channels)
+    @app_commands.check(has_admin_role)
     async def set_answer(self, interaction: Interaction, artist: str, title: str):
-        """Update the answer mid-round."""
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
@@ -148,9 +163,8 @@ class AdminCog(commands.Cog):
         )
 
     @app_commands.command(name="show_answer", description="Reveal the answer without ending")
-    @app_commands.check(has_manage_channels)
+    @app_commands.check(has_admin_role)
     async def show_answer(self, interaction: Interaction):
-        """Show the answer in the game channel (for skipping)."""
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
@@ -168,9 +182,8 @@ class AdminCog(commands.Cog):
 
     @app_commands.command(name="reset_scores", description="Reset scores")
     @app_commands.describe(user="User to reset (leave empty for all)")
-    @app_commands.check(has_manage_channels)
+    @app_commands.check(has_admin_role)
     async def reset_scores(self, interaction: Interaction, user: Optional[discord.User] = None):
-        """Reset all scores or a specific user's score."""
         if user:
             scores = self.data_manager.load_scores()
             user_id = str(user.id)
@@ -194,9 +207,8 @@ class AdminCog(commands.Cog):
         name="Name of the game (e.g., '80s Classics')",
         rounds="Number of rounds to add (optional - for batch input)",
     )
-    @app_commands.check(has_manage_channels)
+    @app_commands.check(has_admin_role)
     async def create_game(self, interaction: Interaction, name: str, rounds: int = 0):
-        """Create a new game with multiple rounds."""
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
@@ -231,9 +243,8 @@ class AdminCog(commands.Cog):
 
     @app_commands.command(name="add_round", description="Add a round to the current game")
     @app_commands.describe(artist="Artist name", title="Song title")
-    @app_commands.check(has_manage_channels)
+    @app_commands.check(has_admin_role)
     async def add_round(self, interaction: Interaction, artist: str, title: str):
-        """Add a round to the current game."""
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
@@ -255,7 +266,10 @@ class AdminCog(commands.Cog):
             )
             return
 
-        game_cog.game_data["rounds"].append({"artist": artist, "title": title})
+        game_cog.game_data["rounds"].append({
+            "artist": {"name": artist, "user_id_answer": 0},
+            "title": {"name": title, "user_id_answer": 0},
+        })
         self.data_manager.save_game(game_cog.game_data)
 
         round_count = len(game_cog.game_data["rounds"])
@@ -266,9 +280,8 @@ class AdminCog(commands.Cog):
         )
 
     @app_commands.command(name="start_game", description="Start the game and auto-advance rounds after each correct answer")
-    @app_commands.check(has_manage_channels)
+    @app_commands.check(has_admin_role)
     async def start_game(self, interaction: Interaction):
-        """Start the game in auto mode — rounds advance automatically 5s after each correct answer."""
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
@@ -311,7 +324,7 @@ class AdminCog(commands.Cog):
         game_cog.auto_game_mode = True
 
         current_round = game_cog.game_data["rounds"][current_index]
-        game_cog.begin_round(current_round["artist"], current_round["title"])
+        game_cog.begin_round(current_round["artist"]["name"], current_round["title"]["name"])
         game_cog.game_data["current_round_index"] = current_index + 1
         self.data_manager.save_game(game_cog.game_data)
 
@@ -329,9 +342,8 @@ class AdminCog(commands.Cog):
         )
 
     @app_commands.command(name="next_round", description="Start the next round from the current game")
-    @app_commands.check(has_manage_channels)
+    @app_commands.check(has_admin_role)
     async def next_round(self, interaction: Interaction):
-        """Start the next round from the current game."""
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
@@ -375,8 +387,8 @@ class AdminCog(commands.Cog):
             return
 
         current_round = game_cog.game_data["rounds"][current_index]
-        artist = current_round["artist"]
-        title = current_round["title"]
+        artist = current_round["artist"]["name"]
+        title = current_round["title"]["name"]
 
         game_cog.begin_round(artist, title)
 
@@ -397,9 +409,8 @@ class AdminCog(commands.Cog):
         )
 
     @app_commands.command(name="show_game", description="Show current game info")
-    @app_commands.check(has_manage_channels)
+    @app_commands.check(has_admin_role)
     async def show_game(self, interaction: Interaction):
-        """Show information about the current game."""
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
@@ -422,7 +433,7 @@ class AdminCog(commands.Cog):
             if i == current_idx + 1 and game_cog.active:
                 status = "🎵"
             rounds_list.append(
-                f"{status} Round {i}: {round_data['artist']} - {round_data['title']}"
+                f"{status} Round {i}: {round_data['artist']['name']} - {round_data['title']['name']}"
             )
 
         rounds_text = "\n".join(rounds_list) if rounds_list else "No rounds added yet"
@@ -435,9 +446,8 @@ class AdminCog(commands.Cog):
         )
 
     @app_commands.command(name="delete_game", description="Delete the current game")
-    @app_commands.check(has_manage_channels)
+    @app_commands.check(has_admin_role)
     async def delete_game(self, interaction: Interaction):
-        """Delete the current game."""
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:

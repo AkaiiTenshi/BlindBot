@@ -22,14 +22,14 @@ class DataManager:
     def load_config(self) -> dict:
         """Load configuration from config.json, returning defaults if missing."""
         if not self.config_file.exists():
-            return {"game_channel_id": None, "admin_permission": "manage_channels"}
+            return {"game_channel_id": None, "admin_role_id": None, "team_role_ids": []}
 
         try:
             with open(self.config_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error loading config.json: {e}")
-            return {"game_channel_id": None, "admin_permission": "manage_channels"}
+            return {"game_channel_id": None, "admin_role_id": None, "team_role_ids": []}
 
     def save_config(self, config: dict):
         """Save configuration to config.json using an atomic write."""
