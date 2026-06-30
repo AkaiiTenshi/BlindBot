@@ -1,32 +1,16 @@
-"""
-Permission checking decorators for Blindy2 admin commands.
-
-This module provides permission checks to ensure only authorized users
-can use admin commands.
-"""
-
 from discord import Interaction
 
+from utils.data_manager import DataManager
 
-async def has_manage_channels(interaction: Interaction) -> bool:
-    """
-    Check if the user has the 'Manage Channels' permission.
 
-    This is used as a decorator for admin commands to ensure only users
-    with appropriate permissions can use them.
-
-    Args:
-        interaction: Discord interaction object from the command
-
-    Returns:
-        True if user has permission, False otherwise
-        (Also sends an error message to the user if they don't have permission)
-    """
+async def has_admin_role(interaction: Interaction) -> bool:
+    config = DataManager().load_config()
+    admin_role_id = config.get("admin_role_id")
     if interaction.user.guild_permissions.manage_channels:
         return True
-    else:
-        await interaction.response.send_message(
-            "❌ You need 'Manage Channels' permission to use this command.",
-            ephemeral=True,
-        )
-        return False
+    if admin_role_id is not None and any(role.id == admin_role_id for role in interaction.user.roles):
+        return True
+    await interaction.response.send_message(
+        "❌ You don't have permission to use this command.", ephemeral=True
+    )
+    return False
