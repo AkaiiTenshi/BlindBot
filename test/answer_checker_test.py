@@ -23,6 +23,9 @@ from utils.answer_checker import check_answer
         ("NF hope", "nf", "hope", (True, 1, "title")),
         ("nf HOPE", "nf", "hope", (True, 1, "artist")),
         ("NF HOPE", "nf", "hope", (False, 0, None)),
+        ("Gimme! Gimme! Gimme!", "abba", "Gimme! Gimme! Gimme!", (True, 1, "title")),
+        ("Gimme! Gimme! Gimme", "abba", "Gimme! Gimme! Gimme!", (False, 0, None)),
+        ("abbba", "abba", "Gimme! Gimme! Gimme!", (False, 0, None))
     ],
 )
 def test_check_answer_basic_cases(message, artist, title, expected):
