@@ -3,19 +3,10 @@ import asyncio
 from discord import app_commands, Interaction
 from discord.ext import commands
 from datetime import datetime
+from utils.checks import has_admin_role
 
 from utils.answer_checker import check_answer
 from utils.data_manager import DataManager
-
-
-def _user_cooldown(interaction: Interaction) -> app_commands.Cooldown | None:
-    if interaction.user.guild_permissions.manage_channels:
-        return None
-    config = DataManager().load_config()
-    admin_role_id = config.get("admin_role_id")
-    if admin_role_id and any(r.id == admin_role_id for r in interaction.user.roles):
-        return None
-    return app_commands.Cooldown(1, 30.0)
 
 
 class GameCog(commands.Cog):
@@ -318,8 +309,8 @@ class GameCog(commands.Cog):
             elif self.auto_game_mode:
                 asyncio.create_task(self._advance_game())
 
-    @app_commands.checks.dynamic_cooldown(_user_cooldown, key=lambda i: i.user.id)
     @app_commands.command(name="scores", description="Show top 10 leaderboard")
+    @app_commands.check(has_admin_role)
     async def scores(self, interaction: Interaction):
         """Display the all-time leaderboard."""
         leaderboard = self.data_manager.get_leaderboard(limit=10)
@@ -339,8 +330,8 @@ class GameCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.checks.dynamic_cooldown(_user_cooldown, key=lambda i: i.user.id)
     @app_commands.command(name="current", description="Show current round status")
+    @app_commands.check(has_admin_role)
     async def current(self, interaction: Interaction):
         """Show info about the active round."""
         if not self.active:
@@ -365,15 +356,8 @@ class GameCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    async def cog_app_command_error(self, interaction: Interaction, error: app_commands.AppCommandError):
-        if isinstance(error, app_commands.CommandOnCooldown):
-            await interaction.response.send_message(
-                f"⏳ Wait {error.retry_after:.0f}s before using this command again.",
-                ephemeral=True,
-            )
-
-    @app_commands.checks.dynamic_cooldown(_user_cooldown, key=lambda i: i.user.id)
     @app_commands.command(name="rules", description="Show the blind test rules")
+    @app_commands.check(has_admin_role)
     async def rules(self, interaction: Interaction):
         channel_mention = f"<#{self.game_channel_id}>" if self.game_channel_id else "#events"
 
@@ -413,8 +397,8 @@ class GameCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.checks.dynamic_cooldown(_user_cooldown, key=lambda i: i.user.id)
     @app_commands.command(name="game_scores", description="Show current game team standings and top players")
+    @app_commands.check(has_admin_role)
     async def game_scores(self, interaction: Interaction):
         """Display team scores and individual standings for the current game."""
         if not self.game_data:
