@@ -4,17 +4,8 @@ def check_answer(message: str, artist: str, title: str) -> tuple[bool, int, str 
 
     Returns a tuple of (is_correct, points, match_type)
     where match_type is "artist", "title", "both", or None.
-
-    Words with more than 1 uppercase letter are stripped from the guess before
-    matching, so bad-casing parts don't block valid parts from scoring.
     """
-    raw_words = message.strip().split()
-    valid_words = [w for w in raw_words if sum(1 for c in w if c.isupper()) <= 1]
-
-    if not valid_words:
-        return (False, 0, None)
-
-    guess = " ".join(valid_words).lower()
+    guess = " ".join(message.strip().split()).lower()
     artist_lower = " ".join(artist.strip().split()).lower()
     title_lower = " ".join(title.strip().split()).lower()
 
