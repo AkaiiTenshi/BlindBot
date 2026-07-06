@@ -2,9 +2,17 @@ services:
   discord-bot:
     build: .
     image: blindy42:v1
-    container_name: blindy42
     restart: unless-stopped
     env_file:
       - .env
     volumes:
       - ./data:/app/data
+
+  # To test prod container
+  # discord-bot:
+  #   image: ghcr.io/42parispedago/blindbot:1.0.0
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   volumes:
+  #     - ./data:/app/data  
