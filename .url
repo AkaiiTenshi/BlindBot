@@ -1,1 +1,1 @@
-https://discord.com/oauth2/authorize?client_id=1484586765615628511&permissions=17602923555888&integration_type=0&scope=bot+applications.commands
+https://discord.com/oauth2/authorize?client_id=<your_client_id>&permissions=17602923555888&integration_type=0&scope=bot+applications.commands
