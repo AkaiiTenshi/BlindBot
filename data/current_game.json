@@ -1,0 +1,46 @@
+{
+  "name": "parisTest",
+  "rounds": [
+    {
+      "artist": {
+        "name": "eminem",
+        "user_id_answer": 0
+      },
+      "title": {
+        "name": "lose yourself",
+        "user_id_answer": 0
+      }
+    },
+    {
+      "artist": {
+        "name": "iam",
+        "user_id_answer": 0
+      },
+      "title": {
+        "name": "petit frere",
+        "user_id_answer": 0
+      }
+    },
+    {
+      "artist": {
+        "name": "nf",
+        "user_id_answer": 0
+      },
+      "title": {
+        "name": "hope",
+        "user_id_answer": 0
+      }
+    },
+    {
+      "artist": {
+        "name": "christophe mae",
+        "user_id_answer": 0
+      },
+      "title": {
+        "name": "la vie d'artiste",
+        "user_id_answer": 0
+      }
+    }
+  ],
+  "current_round_index": 4
+}
