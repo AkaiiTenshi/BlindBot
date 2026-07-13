@@ -272,12 +272,12 @@ class GameCog(commands.Cog):
                 f"✅ {message.author.display_name} got both! (+{actual_points} points)"
             )
         elif award_artist:
-            suffix = "🔒 Round locked!" if self.title_found else "🎵 Title still open!"
+            suffix = "🔒 Round locked!" if self.title_found else "🎵 **Title** still open!"
             await message.channel.send(
                 f"✅ {message.author.display_name} got the artist! (+1 point)\n{suffix}"
             )
         elif award_title:
-            suffix = "🔒 Round locked!" if self.artist_found else "🎵 Artist still open!"
+            suffix = "🔒 Round locked!" if self.artist_found else "🎵 **Artist** still open!"
             await message.channel.send(
                 f"✅ {message.author.display_name} got the title! (+1 point)\n{suffix}"
             )
@@ -366,15 +366,15 @@ class GameCog(commands.Cog):
         embed.add_field(
             name="🇫🇷 Règles",
             value=(
-                f"Envoyez le nom de l'artiste et/ou du titre dans {channel_mention}\n\n"
+                f"Envoyez le nom de l'artiste **OU** du titre dans {channel_mention}\n\n"
                 "**Exemple :** abba - Gimme! Gimme! Gimme!\n\n"
                 "✅ **Messages acceptés :**\n"
                 "`abba` → 1 point\n"
                 "`Gimme! Gimme! Gimme!` → 1 point\n"
-                "`abba Gimme! Gimme! Gimme!` → 2 points\n\n"
                 "❌ **Fautes (0 points) :**\n"
                 "`Gimme! Gimme! Gimme` ← ponctuation manquante\n"
                 "`abbba` ← faute de frappe"
+                "`abba Gimme! Gimme! Gimme!` ← ponctuation manquante\n"
             ),
             inline=False,
         )
@@ -387,10 +387,10 @@ class GameCog(commands.Cog):
                 "✅ **Accepted answers:**\n"
                 "`abba` → 1 point\n"
                 "`Gimme! Gimme! Gimme!` → 1 point\n"
-                "`abba Gimme! Gimme! Gimme!` → 2 points\n\n"
                 "❌ **Wrong answers (0 points):**\n"
                 "`Gimme! Gimme! Gimme` ← missing punctuation\n"
                 "`abbba` ← typo"
+                "`abba Gimme! Gimme! Gimme!` ← both artist and title in one answer\n"
             ),
             inline=False,
         )
