@@ -1,9 +1,37 @@
 {
   "298354581421817858": {
     "username": "AkaiiTenshi",
-    "total_points": 46,
-    "rounds_won": 36,
-    "full_answers": 12,
+    "total_points": 48,
+    "rounds_won": 37,
+    "full_answers": 13,
     "partial_answers": 24
+  },
+  "644051282239422474": {
+    "username": "minicube_707",
+    "total_points": 3,
+    "rounds_won": 2,
+    "full_answers": 1,
+    "partial_answers": 1
+  },
+  "414870216447754240": {
+    "username": "Rehxco",
+    "total_points": 2,
+    "rounds_won": 2,
+    "full_answers": 1,
+    "partial_answers": 1
+  },
+  "1327717405648224440": {
+    "username": "Laguigue",
+    "total_points": 5,
+    "rounds_won": 4,
+    "full_answers": 2,
+    "partial_answers": 2
+  },
+  "1210950302036135946": {
+    "username": "Eric",
+    "total_points": 6,
+    "rounds_won": 5,
+    "full_answers": 1,
+    "partial_answers": 4
   }
 }

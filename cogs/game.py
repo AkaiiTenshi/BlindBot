@@ -150,7 +150,9 @@ class GameCog(commands.Cog):
         current_index = self.game_data["current_round_index"]
         current_round = self.game_data["rounds"][current_index]
 
-        self.begin_round(current_round["artist"]["name"], current_round["title"]["name"])
+        artist = current_round["artist"]["name"] if current_round["artist"] else None
+        title = current_round["title"]["name"] if current_round["title"] else None
+        self.begin_round(artist, title)
         self.game_data["current_round_index"] = current_index + 1
         self.data_manager.save_game(self.game_data)
 
@@ -183,13 +185,13 @@ class GameCog(commands.Cog):
 
             if " - " in content:
                 parts = content.split(" - ", 1)
-                artist = parts[0].strip().lower()
-                title = parts[1].strip().lower()
+                artist = parts[0].strip().lower() or None
+                title = parts[1].strip().lower() or None
 
-                if artist and title:
+                if artist or title:
                     self.game_data["rounds"].append({
-                        "artist": {"name": artist, "user_id_answer": 0},
-                        "title": {"name": title, "user_id_answer": 0},
+                        "artist": {"name": artist, "user_id_answer": 0} if artist else None,
+                        "title": {"name": title, "user_id_answer": 0} if title else None,
                     })
                     self.batch_input_received += 1
                     self.data_manager.save_game(self.game_data)
@@ -209,12 +211,12 @@ class GameCog(commands.Cog):
                     return
                 else:
                     await message.channel.send(
-                        "❌ Invalid format. Use: `artist - title` or type `cancel` to stop."
+                        "❌ Invalid format. Need at least an artist or a title: `artist -`, `- title`, or `artist - title`."
                     )
                     return
             else:
                 await message.channel.send(
-                    "❌ Invalid format. Use: `artist - title` (with space-dash-space) or type `cancel` to stop."
+                    "❌ Invalid format. Use `artist - title`, `artist -`, or `- title` (with space-dash-space). Type `cancel` to stop."
                 )
                 return
 
@@ -231,8 +233,8 @@ class GameCog(commands.Cog):
         if not is_correct:
             return
 
-        award_artist = (match_type in ("artist", "both")) and not self.artist_found
-        award_title = (match_type in ("title", "both")) and not self.title_found
+        award_artist = self.artist is not None and match_type == "artist" and not self.artist_found
+        award_title = self.title is not None and match_type == "title" and not self.title_found
 
         if not award_artist and not award_title:
             return
@@ -282,7 +284,10 @@ class GameCog(commands.Cog):
                 f"✅ {message.author.display_name} got the title! (+1 point)\n{suffix}"
             )
 
-        if self.artist_found and self.title_found:
+        artist_done = self.artist is None or self.artist_found
+        title_done = self.title is None or self.title_found
+
+        if artist_done and title_done:
             self.locked = True
             round_num_snapshot = self.round_number
             await asyncio.sleep(3)

@@ -62,11 +62,11 @@ class AdminCog(commands.Cog):
 
     @app_commands.command(name="start_round", description="Start a new blind test round")
     @app_commands.describe(
-        artist="Artist name",
-        title="Song title",
+        artist="Artist name (optional)",
+        title="Song title (optional)",
     )
     @app_commands.check(has_admin_role)
-    async def start_round(self, interaction: Interaction, artist: str, title: str):
+    async def start_round(self, interaction: Interaction, artist: Optional[str] = None, title: Optional[str] = None):
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
@@ -85,12 +85,12 @@ class AdminCog(commands.Cog):
             )
             return
 
-        artist = " ".join(artist.strip().split()).lower()
-        title = " ".join(title.strip().split()).lower()
+        artist = " ".join(artist.strip().split()).lower() if artist else None
+        title = " ".join(title.strip().split()).lower() if title else None
 
-        if not artist or not title:
+        if not artist and not title:
             await interaction.response.send_message(
-                "❌ Artist and title cannot be empty.", ephemeral=True
+                "❌ Provide at least an artist or a title.", ephemeral=True
             )
             return
 
@@ -242,9 +242,9 @@ class AdminCog(commands.Cog):
             )
 
     @app_commands.command(name="add_round", description="Add a round to the current game")
-    @app_commands.describe(artist="Artist name", title="Song title")
+    @app_commands.describe(artist="Artist name (optional)", title="Song title (optional)")
     @app_commands.check(has_admin_role)
-    async def add_round(self, interaction: Interaction, artist: str, title: str):
+    async def add_round(self, interaction: Interaction, artist: Optional[str] = None, title: Optional[str] = None):
         game_cog = self.bot.get_cog("GameCog")
 
         if not game_cog:
@@ -257,18 +257,18 @@ class AdminCog(commands.Cog):
             )
             return
 
-        artist = " ".join(artist.strip().split()).lower()
-        title = " ".join(title.strip().split()).lower()
+        artist = " ".join(artist.strip().split()).lower() if artist else None
+        title = " ".join(title.strip().split()).lower() if title else None
 
-        if not artist or not title:
+        if not artist and not title:
             await interaction.response.send_message(
-                "❌ Artist and title cannot be empty.", ephemeral=True
+                "❌ Provide at least an artist or a title.", ephemeral=True
             )
             return
 
         game_cog.game_data["rounds"].append({
-            "artist": {"name": artist, "user_id_answer": 0},
-            "title": {"name": title, "user_id_answer": 0},
+            "artist": {"name": artist, "user_id_answer": 0} if artist else None,
+            "title": {"name": title, "user_id_answer": 0} if title else None,
         })
         self.data_manager.save_game(game_cog.game_data)
 
@@ -324,7 +324,9 @@ class AdminCog(commands.Cog):
         game_cog.auto_game_mode = True
 
         current_round = game_cog.game_data["rounds"][current_index]
-        game_cog.begin_round(current_round["artist"]["name"], current_round["title"]["name"])
+        artist = current_round["artist"]["name"] if current_round["artist"] else None
+        title = current_round["title"]["name"] if current_round["title"] else None
+        game_cog.begin_round(artist, title)
         game_cog.game_data["current_round_index"] = current_index + 1
         self.data_manager.save_game(game_cog.game_data)
 
@@ -387,8 +389,8 @@ class AdminCog(commands.Cog):
             return
 
         current_round = game_cog.game_data["rounds"][current_index]
-        artist = current_round["artist"]["name"]
-        title = current_round["title"]["name"]
+        artist = current_round["artist"]["name"] if current_round["artist"] else None
+        title = current_round["title"]["name"] if current_round["title"] else None
 
         game_cog.begin_round(artist, title)
 
@@ -432,9 +434,9 @@ class AdminCog(commands.Cog):
             status = "✅" if i <= current_idx else "⏳"
             if i == current_idx + 1 and game_cog.active:
                 status = "🎵"
-            rounds_list.append(
-                f"{status} Round {i}: {round_data['artist']['name']} - {round_data['title']['name']}"
-            )
+            artist_str = round_data["artist"]["name"] if round_data["artist"] else "?"
+            title_str = round_data["title"]["name"] if round_data["title"] else "?"
+            rounds_list.append(f"{status} Round {i}: {artist_str} - {title_str}")
 
         rounds_text = "\n".join(rounds_list) if rounds_list else "No rounds added yet"
 

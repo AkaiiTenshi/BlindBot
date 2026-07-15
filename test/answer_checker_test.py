@@ -31,6 +31,7 @@ from utils.answer_checker import check_answer
         ("TiTle", "artist", "title", (True, 1, "title")),
         ("TITLE", "artist", "title", (True, 1, "title")),
         ("title", "artist", "title", (True, 1, "title")),
+        ("title", None, "title", (True, 1, "title")),
     ],
 )
 def test_check_answer_basic_cases(message, artist, title, expected):
