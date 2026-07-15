@@ -367,6 +367,7 @@ class GameCog(commands.Cog):
             name="🇫🇷 Règles",
             value=(
                 f"Envoyez le nom de l'artiste **OU** du titre dans {channel_mention}\n\n"
+                "ne mettez pas les accents s'il y en a"
                 "**Exemple :** abba - Gimme! Gimme! Gimme!\n\n"
                 "✅ **Messages acceptés :**\n"
                 "`abba` → 1 point\n"
@@ -374,7 +375,6 @@ class GameCog(commands.Cog):
                 "❌ **Fautes (0 points) :**\n"
                 "`Gimme! Gimme! Gimme` ← ponctuation manquante\n"
                 "`abbba` ← faute de frappe"
-                "`abba Gimme! Gimme! Gimme!` ← ponctuation manquante\n"
             ),
             inline=False,
         )
@@ -382,7 +382,8 @@ class GameCog(commands.Cog):
         embed.add_field(
             name="🇬🇧 Rules",
             value=(
-                f"Write the artist's name and/or the song title in {channel_mention}\n\n"
+                f"Write the artist's name **OR** the song title in {channel_mention}\n\n"
+                "don't write accents even if you're supposed to"
                 "**Example:** abba - Gimme! Gimme! Gimme!\n\n"
                 "✅ **Accepted answers:**\n"
                 "`abba` → 1 point\n"
@@ -390,7 +391,6 @@ class GameCog(commands.Cog):
                 "❌ **Wrong answers (0 points):**\n"
                 "`Gimme! Gimme! Gimme` ← missing punctuation\n"
                 "`abbba` ← typo"
-                "`abba Gimme! Gimme! Gimme!` ← both artist and title in one answer\n"
             ),
             inline=False,
         )
